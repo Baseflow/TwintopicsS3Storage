@@ -1,5 +1,5 @@
 [package]
-name = "twintopics_s3_storage"
+name = "twintopics-s3-storage"
 version = "0.1.0"
 edition = "2021"
 
