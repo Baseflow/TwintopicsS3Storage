@@ -25,18 +25,18 @@ pub struct BucketRepository {
 
 impl BucketRepository {
     pub fn new(
-        endpoint_url: String,
-        bucket_name: String,
-        access_key_id: String,
-        secret_key: String,
-        region: String,
+        endpoint_url: &str,
+        region: &str,
+        bucket_name: &str,
+        access_key_id: &str,
+        secret_key: &str,
     ) -> BucketRepository {
         tracing::info!("Connecting to bucket {bucket_name}");
         let config = aws_sdk_s3::Config::builder()
             .endpoint_url(endpoint_url)
             .credentials_provider(Credentials::new(access_key_id, secret_key, None, None, ""))
             .behavior_version_latest()
-            .region(Region::new(region))
+            .region(Region::new(region.to_string()))
             .build();
 
         let client = Client::from_conf(config);
@@ -44,7 +44,7 @@ impl BucketRepository {
 
         BucketRepository {
             client,
-            bucket_name,
+            bucket_name: bucket_name.to_string(),
         }
     }
 }
