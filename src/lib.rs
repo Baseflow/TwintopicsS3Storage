@@ -51,11 +51,16 @@ impl BucketRepository {
 }
 
 impl BucketRepository {
-    pub async fn delete_file(&self, file_id: FileId) -> Result<(), BucketError> {
+    pub async fn delete_file(
+        &self,
+        path: &str,
+        file_id: FileId) -> Result<(), BucketError> {
+        let object_key = format!("{}{}", path, file_id); // Concatenate path and file_id
+
         self.client
             .delete_object()
             .bucket(&self.bucket_name)
-            .key(&file_id.to_string())
+            .key(object_key)
             .send()
             .await?;
         Ok(())
@@ -73,16 +78,20 @@ impl BucketRepository {
     /// }
     pub async fn put_file_stream(
         &self,
+        path: &str,
+        content_type: &str,
         stream: impl Stream<Item=Result<Bytes, std::io::Error>> + Send + Sync + 'static,
     ) -> Result<FileId, BucketError> {
         let file_id = Uuid::new_v4();
+        let object_key = format!("{}{}", path, file_id); // Concatenate path and file_id
         let stream = stream.map_ok(Frame::data);
         let stream_body = http_body_util::StreamBody::new(stream);
         let bytes_stream = ByteStream::from_body_1_x(stream_body);
         self.client
             .put_object()
             .bucket(&self.bucket_name)
-            .key(&file_id.to_string())
+            .key(object_key)
+            .content_type(content_type)
             .body(bytes_stream)
             .send()
             .await?;
@@ -100,12 +109,17 @@ impl BucketRepository {
     ///
     ///     let body = poem::Body::from_async_read(image_stream);
     ///     Ok(Binary(body))
-    pub async fn get_file_stream(&self, file_id: FileId) -> Result<impl AsyncRead, BucketError> {
+    pub async fn get_file_stream(
+        &self,
+        path: &str,
+        file_id: FileId) -> Result<impl AsyncRead, BucketError> {
+        let object_key = format!("{}{}", path, file_id); // Concatenate path and file_id
+
         let stream = self
             .client
             .get_object()
             .bucket(&self.bucket_name)
-            .key(&file_id.to_string())
+            .key(object_key)
             .send()
             .await?
             .body
@@ -114,12 +128,18 @@ impl BucketRepository {
         Ok(stream)
     }
 
-    pub async fn get_file(&self, file_id: FileId) -> Result<Bytes, BucketError> {
+    pub async fn get_file(
+        &self,
+        path: &str,
+        file_id: FileId) -> Result<Bytes, BucketError> {
+
+        let object_key = format!("{}{}", path, file_id); // Concatenate path and file_id
+
         let aggregated_bytes = self
             .client
             .get_object()
             .bucket(&self.bucket_name)
-            .key(&file_id.to_string())
+            .key(object_key)
             .send()
             .await?
             .body
@@ -129,13 +149,19 @@ impl BucketRepository {
         Ok(aggregated_bytes.into_bytes())
     }
 
-    pub async fn put_file(&self, bytes: Bytes) -> Result<FileId, BucketError> {
+    pub async fn put_file(
+        &self,
+        path: &str,
+        content_type: &str,
+        bytes: Bytes) -> Result<FileId, BucketError> {
         let file_id = Uuid::new_v4();
+        let object_key = format!("{}{}", path, file_id); // Concatenate path and file_id
         let stream = ByteStream::from(bytes);
         self.client
             .put_object()
             .bucket(&self.bucket_name)
-            .key(&file_id.to_string())
+            .key(object_key)
+            .content_type(content_type)
             .body(stream)
             .send()
             .await?;
@@ -143,29 +169,36 @@ impl BucketRepository {
         Ok(file_id)
     }
 
-    pub async fn get_presigned_post_url(&self) -> Result<(FileId, Url), BucketError> {
+    pub async fn get_presigned_post_url(
+        &self,
+        path: &str) -> Result<(FileId, Url), BucketError> {
         let file_id = Uuid::new_v4();
+        let object_key = format!("{}{}", path, file_id); // Concatenate path and file_id
         // This library checks whether the pre-signing configuration is valid at runtime. (bad design!)
         // We know it is, because we are passing an expiry below 1 week. Therefore: unwrap
         let request = self
             .client
             .put_object()
             .bucket(&self.bucket_name)
-            .key(&file_id.to_string())
+            .key(object_key)
             .presigned(PresigningConfig::expires_in(Duration::from_secs(60 * 60 * 24 * 6)).unwrap())
             .await?;
 
         Ok((file_id, request.uri().try_into()?))
     }
 
-    pub async fn get_presigned_get_url(&self, file_id: FileId) -> Result<Url, BucketError> {
+    pub async fn get_presigned_get_url(
+        &self,
+        path: &str,
+        file_id: FileId) -> Result<Url, BucketError> {
         // This library checks whether the pre-signing configuration is valid at runtime. (bad design!)
         // We know it is, because we are passing an expiry below 1 week. Therefore: unwrap
+        let object_key = format!("{}{}", path, file_id); // Concatenate path and file_id
         let request = self
             .client
             .get_object()
             .bucket(&self.bucket_name)
-            .key(&file_id.to_string())
+            .key(object_key)
             .presigned(PresigningConfig::expires_in(Duration::from_secs(60 * 60 * 24 * 6)).unwrap())
             .await?;
 
