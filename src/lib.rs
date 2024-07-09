@@ -25,7 +25,7 @@ pub struct BucketRepository {
 }
 
 impl BucketRepository {
-    pub fn new(
+    pub async fn new(
         endpoint_url: &str,
         region: &str,
         bucket_name: &str,
@@ -41,6 +41,14 @@ impl BucketRepository {
             .build();
 
         let client = Client::from_conf(config);
+
+        client
+            .head_bucket()
+            .bucket(bucket_name)
+            .send()
+            .await
+            .expect("Error connecting to bucket");
+
         tracing::info!("Successfully connected to bucket");
 
         BucketRepository {
@@ -51,10 +59,7 @@ impl BucketRepository {
 }
 
 impl BucketRepository {
-    pub async fn delete_file(
-        &self,
-        path: &str,
-        file_id: FileId) -> Result<(), BucketError> {
+    pub async fn delete_file(&self, path: &str, file_id: FileId) -> Result<(), BucketError> {
         let object_key = format!("{}{}", path, file_id); // Concatenate path and file_id
 
         self.client
@@ -112,7 +117,8 @@ impl BucketRepository {
     pub async fn get_file_stream(
         &self,
         path: &str,
-        file_id: FileId) -> Result<impl AsyncRead, BucketError> {
+        file_id: FileId,
+    ) -> Result<impl AsyncRead, BucketError> {
         let object_key = format!("{}{}", path, file_id); // Concatenate path and file_id
 
         let stream = self
@@ -128,11 +134,7 @@ impl BucketRepository {
         Ok(stream)
     }
 
-    pub async fn get_file(
-        &self,
-        path: &str,
-        file_id: FileId) -> Result<Bytes, BucketError> {
-
+    pub async fn get_file(&self, path: &str, file_id: FileId) -> Result<Bytes, BucketError> {
         let object_key = format!("{}{}", path, file_id); // Concatenate path and file_id
 
         let aggregated_bytes = self
@@ -153,7 +155,8 @@ impl BucketRepository {
         &self,
         path: &str,
         content_type: &str,
-        bytes: Bytes) -> Result<FileId, BucketError> {
+        bytes: Bytes,
+    ) -> Result<FileId, BucketError> {
         let file_id = Uuid::new_v4();
         let object_key = format!("{}{}", path, file_id); // Concatenate path and file_id
         let stream = ByteStream::from(bytes);
@@ -169,19 +172,20 @@ impl BucketRepository {
         Ok(file_id)
     }
 
-    pub async fn get_presigned_post_url(
-        &self,
-        path: &str) -> Result<(FileId, Url), BucketError> {
+    pub async fn get_presigned_post_url(&self, path: &str) -> Result<(FileId, Url), BucketError> {
         let file_id = Uuid::new_v4();
         let object_key = format!("{}{}", path, file_id); // Concatenate path and file_id
-        // This library checks whether the pre-signing configuration is valid at runtime. (bad design!)
-        // We know it is, because we are passing an expiry below 1 week. Therefore: unwrap
+
         let request = self
             .client
             .put_object()
             .bucket(&self.bucket_name)
             .key(object_key)
-            .presigned(PresigningConfig::expires_in(Duration::from_secs(60 * 60 * 24 * 6)).unwrap())
+            .presigned(
+                PresigningConfig::expires_in(Duration::from_secs(60 * 60 * 24 * 6)).expect(
+                    "This is infallible. Expiry is below 1 week, which is checked at runtime.",
+                ),
+            )
             .await?;
 
         Ok((file_id, request.uri().try_into()?))
@@ -190,16 +194,19 @@ impl BucketRepository {
     pub async fn get_presigned_get_url(
         &self,
         path: &str,
-        file_id: FileId) -> Result<Url, BucketError> {
-        // This library checks whether the pre-signing configuration is valid at runtime. (bad design!)
-        // We know it is, because we are passing an expiry below 1 week. Therefore: unwrap
+        file_id: FileId,
+    ) -> Result<Url, BucketError> {
         let object_key = format!("{}{}", path, file_id); // Concatenate path and file_id
         let request = self
             .client
             .get_object()
             .bucket(&self.bucket_name)
             .key(object_key)
-            .presigned(PresigningConfig::expires_in(Duration::from_secs(60 * 60 * 24 * 6)).unwrap())
+            .presigned(
+                PresigningConfig::expires_in(Duration::from_secs(60 * 60 * 24 * 6)).expect(
+                    "This is infallible. Expiry is below 1 week, which is checked at runtime.",
+                ),
+            )
             .await?;
 
         Ok(request.uri().try_into()?)
@@ -213,7 +220,7 @@ pub enum BucketError {
     UrlError(url::ParseError),
 }
 
-impl Display for BucketError{
+impl Display for BucketError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             BucketError::S3SdkError(error) => write!(f, "S3 SDK Error: {}", error),
@@ -221,7 +228,6 @@ impl Display for BucketError{
             BucketError::UrlError(error) => write!(f, "URL Error: {}", error),
         }
     }
-
 }
 
 impl<T: Error + Send + Sync + 'static> From<SdkError<T>> for BucketError {
