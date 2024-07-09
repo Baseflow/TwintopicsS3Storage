@@ -3,11 +3,11 @@ use std::fmt::Display;
 use std::time::Duration;
 
 use aws_config::Region;
+use aws_sdk_s3::Client;
 use aws_sdk_s3::config::Credentials;
 use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::primitives::{ByteStream, ByteStreamError};
-use aws_sdk_s3::Client;
 use bytes::Bytes;
 use futures_util::TryStreamExt;
 use http_body::Frame;
@@ -42,21 +42,12 @@ impl BucketRepository {
 
         let client = Client::from_conf(config);
 
-        match client.head_bucket().bucket(bucket_name).send().await {
-            Ok(_) => {
-                tracing::info!("Bucket {bucket_name} already exists. Skipping creation.");
-            }
-            Err(_) => {
-                tracing::info!("Bucket {bucket_name} does not yet exist. Creating.");
-                client
-                    .create_bucket()
-                    .bucket(bucket_name)
-                    .send()
-                    .await
-                    .expect("Error creating bucket");
-                tracing::info!("Bucket {bucket_name} created.")
-            }
-        }
+        client
+            .head_bucket()
+            .bucket(bucket_name)
+            .send()
+            .await
+            .expect("Error connecting to bucket");
 
         tracing::info!("Successfully connected to bucket");
 
