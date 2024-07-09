@@ -3,11 +3,11 @@ use std::fmt::Display;
 use std::time::Duration;
 
 use aws_config::Region;
+use aws_sdk_s3::Client;
 use aws_sdk_s3::config::Credentials;
 use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::primitives::{ByteStream, ByteStreamError};
-use aws_sdk_s3::Client;
 use bytes::Bytes;
 use futures_util::TryStreamExt;
 use http_body::Frame;
@@ -85,7 +85,7 @@ impl BucketRepository {
         &self,
         path: &str,
         content_type: &str,
-        stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + Sync + 'static,
+        stream: impl Stream<Item=Result<Bytes, std::io::Error>> + Send + Sync + 'static,
     ) -> Result<FileId, BucketError> {
         let file_id = Uuid::new_v4();
         let object_key = format!("{}{}", path, file_id); // Concatenate path and file_id
@@ -175,14 +175,17 @@ impl BucketRepository {
     pub async fn get_presigned_post_url(&self, path: &str) -> Result<(FileId, Url), BucketError> {
         let file_id = Uuid::new_v4();
         let object_key = format!("{}{}", path, file_id); // Concatenate path and file_id
-                                                         // This library checks whether the pre-signing configuration is valid at runtime. (bad design!)
-                                                         // We know it is, because we are passing an expiry below 1 week. Therefore: unwrap
+
         let request = self
             .client
             .put_object()
             .bucket(&self.bucket_name)
             .key(object_key)
-            .presigned(PresigningConfig::expires_in(Duration::from_secs(60 * 60 * 24 * 6)).unwrap())
+            .presigned(
+                PresigningConfig::expires_in(Duration::from_secs(60 * 60 * 24 * 6)).expect(
+                    "This is infallible. Expiry is below 1 week, which is checked at runtime.",
+                ),
+            )
             .await?;
 
         Ok((file_id, request.uri().try_into()?))
@@ -201,7 +204,11 @@ impl BucketRepository {
             .get_object()
             .bucket(&self.bucket_name)
             .key(object_key)
-            .presigned(PresigningConfig::expires_in(Duration::from_secs(60 * 60 * 24 * 6)).unwrap())
+            .presigned(
+                PresigningConfig::expires_in(Duration::from_secs(60 * 60 * 24 * 6)).expect(
+                    "This is infallible. Expiry is below 1 week, which is checked at runtime.",
+                ),
+            )
             .await?;
 
         Ok(request.uri().try_into()?)
