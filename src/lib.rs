@@ -196,8 +196,6 @@ impl BucketRepository {
         path: &str,
         file_id: FileId,
     ) -> Result<Url, BucketError> {
-        // This library checks whether the pre-signing configuration is valid at runtime. (bad design!)
-        // We know it is, because we are passing an expiry below 1 week. Therefore: unwrap
         let object_key = format!("{}{}", path, file_id); // Concatenate path and file_id
         let request = self
             .client
