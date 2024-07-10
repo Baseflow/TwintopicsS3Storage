@@ -3,11 +3,11 @@ use std::fmt::Display;
 use std::time::Duration;
 
 use aws_config::Region;
-use aws_sdk_s3::Client;
 use aws_sdk_s3::config::Credentials;
 use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::primitives::{ByteStream, ByteStreamError};
+use aws_sdk_s3::Client;
 use bytes::Bytes;
 use futures_util::TryStreamExt;
 use http_body::Frame;
@@ -42,14 +42,18 @@ impl BucketRepository {
 
         let client = Client::from_conf(config);
 
-        client
-            .head_bucket()
-            .bucket(bucket_name)
-            .send()
-            .await
-            .expect("Error connecting to bucket");
-
-        tracing::info!("Successfully connected to bucket");
+        match client.head_bucket().bucket(bucket_name).send().await {
+            Ok(_) => tracing::info!("Successfully connected to bucket"),
+            Err(_) => {
+                tracing::info!("Bucket {bucket_name} not found. Attempting to create it.");
+                client
+                    .create_bucket()
+                    .bucket(bucket_name)
+                    .send()
+                    .await
+                    .expect("Failed to create bucket");
+            }
+        }
 
         BucketRepository {
             client,
@@ -85,7 +89,7 @@ impl BucketRepository {
         &self,
         path: &str,
         content_type: &str,
-        stream: impl Stream<Item=Result<Bytes, std::io::Error>> + Send + Sync + 'static,
+        stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + Sync + 'static,
     ) -> Result<FileId, BucketError> {
         let file_id = Uuid::new_v4();
         let object_key = format!("{}{}", path, file_id); // Concatenate path and file_id
